@@ -22,4 +22,4 @@ packaging<25.0
 
 # It's recommended to install torch separately if you need a specific version (e.g., for CUDA)
 # sentence-transformers will install a default version of torch if it's not present.
-torch
+torchollama
