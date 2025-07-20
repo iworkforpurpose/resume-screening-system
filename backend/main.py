@@ -12,15 +12,13 @@ import re
 from typing import List
 import time
 import random
-import ollama
 import hashlib
-import re
 from datetime import datetime, timedelta
 import threading
 import uuid
 from concurrent.futures import ThreadPoolExecutor
 
-# Import the robust parser (but we'll use our improved version)
+# Import the robust parser (now using Hugging Face)
 from parser import parse_resume_with_llm
 
 # --- Libraries for storage, search, and ranking ---
@@ -31,6 +29,10 @@ from pydantic import BaseModel
 
 # Load environment variables from .env file
 load_dotenv()
+
+# Hugging Face API
+HF_API_KEY = os.environ.get("HF_API_KEY")
+HF_MODEL = os.environ.get("HF_MODEL", "mistralai/Mistral-7B-Instruct-v0.2")
 
 # --- Initialize Connections ---
 supabase_url = os.environ.get("SUPABASE_URL")
@@ -199,23 +201,10 @@ def generate_score_breakdown(candidate_summary: str, job_description: str, match
     
     return breakdown
 
-async def get_llm_analysis_async(job_description: str, candidate_summary: str, filename: str) -> dict:
-    # Preprocess text
-    job_description = preprocess_text(job_description)
-    candidate_summary = preprocess_text(candidate_summary)
-    
-    # Create cache key
-    cache_key = hashlib.md5(f"{job_description}:{candidate_summary}".encode()).hexdigest()
-    
-    # Check cache
-    if cache_key in llm_cache:
-        cached_result = llm_cache[cache_key]
-        if datetime.now() - cached_result['timestamp'] < CACHE_DURATION:
-            result = cached_result['data'].copy()
-            result['filename'] = filename
-            result['cached'] = True
-            return result
-    
+def get_llm_analysis_async_hf(job_description: str, candidate_summary: str, filename: str) -> dict:
+    """
+    Uses Hugging Face Inference API to analyze candidate fit for a job.
+    """
     prompt = f"""
     You are an expert recruitment analyst. Your task is to analyze a candidate's fit for a job.
 
@@ -237,41 +226,66 @@ async def get_llm_analysis_async(job_description: str, candidate_summary: str, f
     }}
     """
     try:
-        response = ollama.chat(model='llama3.2:3b', messages=[
-            {
-                'role': 'user',
-                'content': prompt
-            }
-        ], options={
-            'temperature': 0,
-            'num_predict': 300
-        })
-        response_content = response['message']['content']
-        # Try to parse JSON from the response
+        api_url = f"https://api-inference.huggingface.co/models/{HF_MODEL}"
+        headers = {
+            "Authorization": f"Bearer {HF_API_KEY}",
+            "Content-Type": "application/json"
+        }
+        payload = {
+            "inputs": prompt,
+            "parameters": {"max_new_tokens": 400, "return_full_text": False},
+            "options": {"wait_for_model": True}
+        }
+        response = requests.post(api_url, headers=headers, json=payload, timeout=60)
+        response.raise_for_status()
+        result = response.json()
+        if isinstance(result, list) and 'generated_text' in result[0]:
+            response_content = result[0]['generated_text']
+        elif isinstance(result, dict) and 'generated_text' in result:
+            response_content = result['generated_text']
+        else:
+            response_content = str(result)
         try:
             analysis_content = json.loads(response_content)
         except json.JSONDecodeError:
-            # If JSON parsing fails, create a basic structure
             analysis_content = {
                 "match_score": 50,
                 "justification": response_content[:200] + "..." if len(response_content) > 200 else response_content
             }
-        
-        # Add score breakdown and confidence
-        score_breakdown = generate_score_breakdown(candidate_summary, job_description, analysis_content.get('match_score', 50))
-        analysis_content.update(score_breakdown)
-        analysis_content['filename'] = filename
-        analysis_content['cached'] = False
-        
-        # Cache the result
-        llm_cache[cache_key] = {
-            'data': analysis_content,
-            'timestamp': datetime.now()
-        }
-        
         return analysis_content
     except Exception as e:
         return {"match_score": "Error", "justification": f"API Error: {e}", "filename": filename}
+
+async def get_llm_analysis_async(job_description: str, candidate_summary: str, filename: str) -> dict:
+    # Preprocess text
+    job_description = preprocess_text(job_description)
+    candidate_summary = preprocess_text(candidate_summary)
+    
+    # Create cache key
+    cache_key = hashlib.md5(f"{job_description}:{candidate_summary}".encode()).hexdigest()
+    
+    # Check cache
+    if cache_key in llm_cache:
+        cached_result = llm_cache[cache_key]
+        if datetime.now() - cached_result['timestamp'] < CACHE_DURATION:
+            result = cached_result['data'].copy()
+            result['filename'] = filename
+            result['cached'] = True
+            return result
+    
+    # Use Hugging Face for LLM analysis
+    analysis_content = get_llm_analysis_async_hf(job_description, candidate_summary, filename)
+    # Add score breakdown and confidence
+    score_breakdown = generate_score_breakdown(candidate_summary, job_description, analysis_content.get('match_score', 50))
+    analysis_content.update(score_breakdown)
+    analysis_content['filename'] = filename
+    analysis_content['cached'] = False
+    # Cache the result
+    llm_cache[cache_key] = {
+        'data': analysis_content,
+        'timestamp': datetime.now()
+    }
+    return analysis_content
 
 async def analyze_all_candidates_async(job_desc, candidates):
     tasks = []
