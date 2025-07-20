@@ -1,0 +1,25 @@
+# requirements.txt
+
+# FastAPI web server
+fastapi
+uvicorn[standard]
+
+# Environment variables
+python-dotenv
+
+# PDF and OCR processing
+PyPDF2
+requests
+
+# AI and Vector DB clients
+openai
+pinecone
+supabase>=2.0.0
+sentence-transformers
+
+# Explicit dependency to resolve pinecone-client conflict
+packaging<25.0
+
+# It's recommended to install torch separately if you need a specific version (e.g., for CUDA)
+# sentence-transformers will install a default version of torch if it's not present.
+torch

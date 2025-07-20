@@ -1,0 +1,28 @@
+# Python
+*.pyc
+__pycache__/
+backend/venv/
+backend/.env
+
+# Node
+node_modules/
+.next/
+frontend/robust-frontend/.env
+.env.local
+
+# OS-specific
+.DS_Store
+
+# Logs and system
+*.log
+
+# IDEs/editors
+.vscode/
+.idea/
+
+# Build outputs
+dist/
+build/
+
+# Others
+.env
