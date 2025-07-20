@@ -99,7 +99,7 @@ This project is an end-to-end solution for automated resume screening and candid
 3. Click "Rank Candidates" to view the top 10 matches, their scores, justifications, and skill breakdowns.
 
 ## Screenshots
-![Candidate Ranking Screenshot](./screenshots/candidate-ranking.png)
+![Candidate Ranking Screenshot](frontend/robust-frontend/public/screenshots/candidate-ranking.png)
 
 ## License
 MIT
