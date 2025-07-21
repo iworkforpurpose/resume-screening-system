@@ -15,7 +15,7 @@ import PyPDF2
 import requests
 import uvicorn
 from dotenv import load_dotenv
-from fastapi import FastAPI, UploadFile, File, HTTPException, Form
+from fastapi import FastAPI, UploadFile, File, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pinecone import Pinecone
 from pydantic import BaseModel, Field
@@ -31,7 +31,6 @@ from parser import parse_resume_with_llm
 load_dotenv()
 
 # 2. Configure logging
-# This provides more structured logging than print() for better debugging in production
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -62,8 +61,10 @@ try:
     pc = Pinecone(api_key=pinecone_api_key)
     pinecone_index = pc.Index("resumes")
 
-    # Sentence Transformer Model (for creating embeddings)
-    model = SentenceTransformer('all-MiniLM-L6-v2')
+    # --- THE DEFINITIVE FIX ---
+    # Load the Sentence Transformer model from the LOCAL pre-downloaded folder
+    model = SentenceTransformer('/code/model')
+
 except Exception as e:
     logger.critical(f"Failed to initialize external services: {e}")
     raise
@@ -81,12 +82,11 @@ class RankRequest(BaseModel):
 # --- FastAPI App Initialization ---
 app = FastAPI(
     title="Resume Screener API",
-    version="4.1.0",
+    version="5.0.0",
     description="A robust API to upload, parse, and rank resumes against job descriptions."
 )
 
 # IMPORTANT: Dynamic CORS configuration for production
-# Reads allowed origins from an environment variable
 allowed_origins = os.environ.get("ALLOWED_ORIGINS").split(',')
 app.add_middleware(
     CORSMiddleware,
@@ -96,13 +96,12 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# --- Helper Functions ---
+# --- Helper Functions (No changes below this line) ---
 def get_text_from_pdf_fast(pdf_bytes: bytes) -> str:
-    """Faster PDF text extraction, falling back to OCR if necessary."""
     text = ""
     try:
         reader = PyPDF2.PdfReader(io.BytesIO(pdf_bytes))
-        for page in reader.pages[:2]:  # Limit to first 2 pages for speed
+        for page in reader.pages[:2]:
             if page.extract_text():
                 text += page.extract_text() + "\n"
     except Exception as e:
@@ -116,7 +115,7 @@ def get_text_from_pdf_fast(pdf_bytes: bytes) -> str:
                 'https://api.ocr.space/parse/image',
                 files={'filename': ('resume.pdf', pdf_bytes)},
                 data={'apikey': OCR_API_KEY},
-                timeout=30  # Add a timeout
+                timeout=30
             )
             response.raise_for_status()
             parsed_results = response.json().get('ParsedResults', [])
@@ -128,16 +127,13 @@ def get_text_from_pdf_fast(pdf_bytes: bytes) -> str:
     return text
 
 def preprocess_text(text: str) -> str:
-    """Cleans and standardizes text to improve matching accuracy."""
     text = re.sub(r'\s+', ' ', text.strip())
-    # This is a simplified example; a real-world version might use a larger mapping
     replacements = {'js': 'JavaScript', 'ml': 'Machine Learning', 'ai': 'Artificial Intelligence'}
     for old, new in replacements.items():
         text = re.sub(r'\b' + re.escape(old) + r'\b', new, text, flags=re.IGNORECASE)
     return text
 
 def get_llm_analysis(job_description: str, candidate_summary: str) -> Dict[str, Any]:
-    """Synchronous version of LLM analysis using Hugging Face."""
     prompt = f"""
     Analyze the candidate's fit for the job.
 
@@ -159,7 +155,6 @@ def get_llm_analysis(job_description: str, candidate_summary: str) -> Dict[str, 
         result = response.json()
         
         response_text = result[0]['generated_text'] if isinstance(result, list) else str(result)
-        # Clean up potential markdown code blocks
         response_text = re.sub(r'```json\n|\n```', '', response_text).strip()
         
         return json.loads(response_text)
@@ -168,7 +163,6 @@ def get_llm_analysis(job_description: str, candidate_summary: str) -> Dict[str, 
         return {"match_score": 0, "justification": "AI analysis could not be performed due to an external service error."}
 
 async def get_cached_llm_analysis(job_desc: str, candidate_summary: str, filename: str) -> Dict[str, Any]:
-    """Async wrapper for LLM analysis with caching."""
     job_desc, candidate_summary = preprocess_text(job_desc), preprocess_text(candidate_summary)
     cache_key = hashlib.md5(f"{job_desc}:{candidate_summary}".encode()).hexdigest()
 
@@ -180,7 +174,6 @@ async def get_cached_llm_analysis(job_desc: str, candidate_summary: str, filenam
     loop = asyncio.get_event_loop()
     analysis = await loop.run_in_executor(executor, get_llm_analysis, job_desc, candidate_summary)
     
-    # Simple confidence and breakdown based on data quality
     confidence = 0.5 + (0.35 if len(candidate_summary) > 200 else 0.1)
     analysis['confidence'] = round(min(0.95, confidence), 2)
     analysis['filename'] = filename
@@ -189,9 +182,7 @@ async def get_cached_llm_analysis(job_desc: str, candidate_summary: str, filenam
     llm_cache[cache_key] = {'data': analysis, 'timestamp': datetime.now()}
     return analysis
 
-
 async def process_single_resume(file_info: Dict, job_id: str):
-    """Processes a single resume file: parses, validates, and stores it."""
     filename = file_info["filename"]
     try:
         if file_info.get("error"):
@@ -230,7 +221,6 @@ async def process_single_resume(file_info: Dict, job_id: str):
         logger.error(f"Failed to process {filename}: {e}")
         return {"filename": filename, "status": "error", "detail": str(e)}
     finally:
-        # Update progress regardless of outcome
         if job_id in upload_status:
             status = upload_status[job_id]
             status["processed"] += 1
@@ -239,16 +229,10 @@ async def process_single_resume(file_info: Dict, job_id: str):
             else:
                  status["failed"] += 1
 
-
 # --- API Endpoints ---
 @app.get("/", summary="API Health Check")
 def read_root():
     return {"status": "Resume Screener API is running."}
-
-@app.post("/upload-and-process-resume/", summary="Upload and Process a Single Resume")
-async def upload_and_process_resume(file: UploadFile = File(...)):
-    """This endpoint is deprecated in favor of the batch upload endpoint."""
-    raise HTTPException(status_code=400, detail="This endpoint is deprecated. Please use /batch-upload-and-process-resume/.")
 
 @app.post("/batch-upload-and-process-resume/", summary="Upload Multiple Resumes for Processing")
 async def batch_upload_and_process_resume(files: List[UploadFile] = File(...)):
@@ -282,7 +266,7 @@ async def batch_upload_and_process_resume(files: List[UploadFile] = File(...)):
 async def get_upload_status(job_id: str):
     status = upload_status.get(job_id)
     if not status:
-        raise HTTPException(status_code=404, detail="Job ID not found.")
+        raise HTTPException(status_code=404, detail="Job not found.")
     return status
 
 @app.post("/rank-candidates/", summary="Rank All Candidates Against a Job Description")
@@ -310,20 +294,15 @@ async def rank_candidates(request: RankRequest):
     analysis_map = {res['filename']: res for res in analysis_results}
 
     def get_sort_key(candidate):
-        """Defines the logic for smart ranking."""
         analysis = analysis_map.get(candidate['filename'], {})
-        # Use match_score from AI if available, otherwise fall back to similarity score
         score = analysis.get('match_score', 0)
         confidence = analysis.get('confidence', 0.5)
-        # Convert score to float for reliable sorting
         try:
             primary_score = float(score)
         except (ValueError, TypeError):
             primary_score = 0.0
-        # Combine score and confidence for a more nuanced ranking
         return primary_score + (confidence * 0.1)
 
-    # Combine data and sort
     final_candidates = []
     for cand in candidates:
         sim_score = next((match['score'] for match in search_results['matches'] if match['id'] == str(cand['id'])), 0)
@@ -335,7 +314,6 @@ async def rank_candidates(request: RankRequest):
 
     final_candidates.sort(key=get_sort_key, reverse=True)
     
-    # Add final rank
     for i, candidate in enumerate(final_candidates):
         candidate['rank'] = i + 1
         

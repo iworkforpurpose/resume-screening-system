@@ -11,6 +11,10 @@ COPY ./constraints.txt /code/constraints.txt
 # Install dependencies using both files
 RUN pip install --no-cache-dir --upgrade -r /code/requirements.txt -c /code/constraints.txt
 
+# --- NEW STEP ---
+# Download and save the model to a local directory named 'model'
+RUN python -c "from sentence_transformers import SentenceTransformer; SentenceTransformer('all-MiniLM-L6-v2', cache_folder='./model')"
+
 # Copy the rest of your application code into the container
 COPY . /code
 
