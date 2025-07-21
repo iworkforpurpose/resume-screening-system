@@ -1,25 +1,26 @@
-# requirements.txt
-
-# FastAPI web server
+# Server
+# The core web framework for building the API.
 fastapi
 uvicorn[standard]
 
-# Environment variables
-python-dotenv
-
-# PDF and OCR processing
-PyPDF2
-requests
-
-# AI and Vector DB clients
-openai
-pinecone
+# Database & AI Clients
+# ---------------------
+# Vector database client for semantic search.
+pinecone-client
+# Client for interacting with Supabase (PostgreSQL backend).
 supabase>=2.0.0
+# PostgreSQL driver, required by the Supabase client to connect to the database.
+psycopg2-binary
+# For creating text embeddings. Installs torch as a dependency.
 sentence-transformers
-
-# Explicit dependency to resolve pinecone-client conflict
-packaging<25.0
-
-# It's recommended to install torch separately if you need a specific version (e.g., for CUDA)
-# sentence-transformers will install a default version of torch if it's not present.
+# A deep learning framework used by sentence-transformers.
 torch
+
+# Utilities
+# ---------
+# For making HTTP requests (e.g., to OCR and Hugging Face APIs).
+requests
+# For parsing text from PDF files.
+PyPDF2
+# For loading environment variables from a .env file during local development.
+python-dotenv
