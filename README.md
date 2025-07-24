@@ -325,10 +325,6 @@ npm start
 - Write tests for new features
 - Update documentation for API changes
 
-## License
-
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
-
 ## Credits
 
 **Created by**: Vighnesh Nama
