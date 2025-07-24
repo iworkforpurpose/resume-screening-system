@@ -32,7 +32,7 @@ pinecone_api_key = os.environ.get("PINECONE_API_KEY")
 pc = Pinecone(api_key=pinecone_api_key)
 pinecone_index = pc.Index("resumes")
 
-model = SentenceTransformer('/model')
+model = SentenceTransformer('model')
 OCR_API_KEY = os.environ.get("OCR_API_KEY")
 
 # --- FastAPI App Initialization ---
