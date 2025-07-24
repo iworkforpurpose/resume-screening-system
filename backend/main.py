@@ -1,6 +1,7 @@
 import uvicorn
 from fastapi import FastAPI, UploadFile, File, HTTPException, Request, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 import PyPDF2
 import io
 import os
@@ -32,11 +33,13 @@ pinecone_api_key = os.environ.get("PINECONE_API_KEY")
 pc = Pinecone(api_key=pinecone_api_key)
 pinecone_index = pc.Index("resumes")
 
+# --- CORRECTED MODEL PATH ---
+# Load the model from the relative path 'model' inside the workdir
 model = SentenceTransformer('model')
 OCR_API_KEY = os.environ.get("OCR_API_KEY")
 
 # --- FastAPI App Initialization ---
-app = FastAPI(title="Resume Screener API", version="6.0.0") # Multi-Tenant Version
+app = FastAPI(title="Resume Screener API", version="6.3.0") # Added Manual CORS Fix
 frontend_url = os.environ.get("FRONTEND_URL")
 origins = ["http://localhost:3000", "http://localhost:3001"]
 if frontend_url:
@@ -101,7 +104,6 @@ async def get_llm_analysis_async(job_description: str, candidate_summary: str, f
                 return {"match_score": "Error", "skill_matches": [], "skill_gaps": [], "justification": f"API Error after {max_retries} attempts: {e}", "filename": filename}
             await asyncio.sleep(1)
 
-# --- UPDATED Background Processing Logic for Multi-Tenancy ---
 def process_file_for_batch(file_contents: bytes, filename: str, job_id: str, session_id: str):
     job_status = upload_jobs[job_id]
     try:
@@ -118,12 +120,10 @@ def process_file_for_batch(file_contents: bytes, filename: str, job_id: str, ses
             raise ValueError("AI parser could not find a valid email in the resume.")
         email = email.lower()
 
-        # Check for duplicates within the same session to be safe, though email is globally unique
         existing_resume = supabase.table('resumes').select('id').eq('email', email).execute()
         if existing_resume.data:
             raise ValueError(f"A resume with the email '{email}' already exists.")
 
-        # Save session_id to Supabase
         db_response = supabase.table('resumes').insert({
             "filename": filename,
             "email": email,
@@ -136,7 +136,6 @@ def process_file_for_batch(file_contents: bytes, filename: str, job_id: str, ses
         embedding_text = f"Name: {parsed_data.get('name')}. Experience: {parsed_data.get('experience', '')}. Skills: {', '.join(parsed_data.get('skills', []))}"
         embedding = model.encode(embedding_text).tolist()
 
-        # Upsert to Pinecone with session_id in metadata
         pinecone_index.upsert(vectors=[(
             str(new_resume_id), 
             embedding, 
@@ -154,7 +153,7 @@ def process_file_for_batch(file_contents: bytes, filename: str, job_id: str, ses
         if job_status["processed"] == job_status["total_files"]:
             job_status["status"] = "completed"
 
-# --- API Endpoints (UPDATED for Multi-Tenancy) ---
+# --- API Endpoints ---
 
 @app.post("/upload-and-process-resume/")
 async def upload_and_process_resume(request: Request, file: UploadFile = File(...)):
@@ -169,7 +168,6 @@ async def upload_and_process_resume(request: Request, file: UploadFile = File(..
     job_id = str(uuid.uuid4())
     upload_jobs[job_id] = {"status": "processing", "processed": 0, "total_files": 1, "successful": 0, "failed": 0, "results": []}
     
-    # Pass session_id to the processing function
     process_file_for_batch(contents, file.filename, job_id, session_id)
     
     result = upload_jobs[job_id]["results"][0]
@@ -177,6 +175,19 @@ async def upload_and_process_resume(request: Request, file: UploadFile = File(..
         raise HTTPException(status_code=400, detail=result["detail"])
 
     return {"message": "Resume processed successfully"}
+
+
+# --- NEW: Manual OPTIONS route to handle CORS preflight for the batch upload endpoint ---
+@app.options("/batch-upload-and-process-resume/")
+async def preflight_handler(request: Request):
+    return Response(
+        status_code=200,
+        headers={
+            "Access-Control-Allow-Origin": request.headers.get("Origin", ""),
+            "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+            "Access-Control-Allow-Headers": "X-Session-Id, Content-Type",
+        },
+    )
 
 @app.post("/batch-upload-and-process-resume/")
 async def batch_upload_and_process_resume(
@@ -200,10 +211,10 @@ async def batch_upload_and_process_resume(
 
     for file in files:
         contents = await file.read()
-        # Pass session_id to the background task
         background_tasks.add_task(process_file_for_batch, contents, file.filename, job_id, session_id)
 
     return {"job_id": job_id, "total_files": len(files)}
+
 
 @app.get("/upload-status/{job_id}")
 async def get_upload_status(job_id: str):
@@ -227,7 +238,6 @@ async def rank_candidates(request: Request, body: RankRequest):
     jd_embedding = model.encode(body.job_description).tolist()
 
     try:
-        # Add the metadata filter to the Pinecone query
         query_response = pinecone_index.query(
             vector=jd_embedding,
             top_k=10,
