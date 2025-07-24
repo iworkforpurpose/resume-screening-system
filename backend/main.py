@@ -240,7 +240,7 @@ async def rank_candidates(request: Request, body: RankRequest):
     try:
         query_response = pinecone_index.query(
             vector=jd_embedding,
-            top_k=3,
+            top_k=10,
             include_metadata=False,
             filter={"session_id": {"$eq": session_id}}
         )
