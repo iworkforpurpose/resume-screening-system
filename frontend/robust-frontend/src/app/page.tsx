@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, FormEvent, useEffect } from 'react';
+import { v4 as uuidv4 } from 'uuid';
 
 // --- TypeScript Interfaces ---
 interface ParsedData {
@@ -23,9 +24,6 @@ interface AiAnalysis {
   justification: string;
   skill_matches?: string[];
   skill_gaps?: string[];
-  experience_level?: string;
-  data_quality?: string;
-  confidence?: number;
   cached?: boolean;
 }
 
@@ -34,6 +32,19 @@ interface RankedCandidate {
   candidate_data: CandidateData;
   ai_analysis: AiAnalysis;
   similarity_score: number;
+}
+
+// --- Session ID logic ---
+function getSessionId() {
+  if (typeof window !== 'undefined') {
+    let sessionId = localStorage.getItem('session_id');
+    if (!sessionId) {
+      sessionId = uuidv4();
+      localStorage.setItem('session_id', sessionId);
+    }
+    return sessionId || '';
+  }
+  return '';
 }
 
 // --- Main Component ---
@@ -118,9 +129,13 @@ export default function HomePage() {
       formData.append('files', file);
     });
 
+    const sessionId = getSessionId();
+
     try {
-      const response = await fetch('http://localhost:8000/batch-upload-and-process-resume/', {
+      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
+      const response = await fetch(`${apiUrl}/batch-upload-and-process-resume/`, {
         method: 'POST',
+        headers: { 'X-Session-Id': sessionId },
         body: formData,
       });
       if (!response.ok) {
@@ -162,10 +177,12 @@ export default function HomePage() {
     setError(null);
     setRankedCandidates([]);
 
+    const sessionId = getSessionId();
+
     try {
       const response = await fetch('http://localhost:8000/rank-candidates/', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'X-Session-Id': sessionId },
         body: JSON.stringify({ job_description: jobDescription }),
       });
 
@@ -317,12 +334,11 @@ export default function HomePage() {
                   <div className="text-xl font-bold text-blue-700">{candidate.candidate_data.extracted_data.name || 'Unknown'}</div>
                   <div className="flex items-center gap-4">
                     <div className="text-lg font-semibold text-gray-700">{candidate.ai_analysis.match_score}/100</div>
-                    <div className="text-xs text-green-700 font-bold">Confidence: {Math.round((candidate.ai_analysis.confidence || 0) * 100)}%</div>
                   </div>
                 </div>
                 <div className="text-gray-700 mb-2">{candidate.ai_analysis.justification}</div>
                 <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="font-semibold mb-1">Score Breakdown:</div>
+                  <div className="font-semibold mb-1">Skill Breakdown:</div>
                   <div className="flex flex-wrap gap-2 mb-1">
                     {candidate.ai_analysis.skill_matches && candidate.ai_analysis.skill_matches.length > 0 && (
                       <span className="text-green-700 bg-green-100 rounded px-2 py-0.5 text-xs">✓ Matching Skills: {candidate.ai_analysis.skill_matches.join(', ')}</span>
@@ -331,7 +347,6 @@ export default function HomePage() {
                       <span className="text-red-700 bg-red-100 rounded px-2 py-0.5 text-xs">✗ Missing Skills: {candidate.ai_analysis.skill_gaps.join(', ')}</span>
                     )}
                   </div>
-                  <div className="text-xs text-gray-600">Experience: {candidate.ai_analysis.experience_level} <span className="ml-2">Data Quality: {candidate.ai_analysis.data_quality}</span></div>
                 </div>
                 <div className="text-xs text-gray-400 mt-2">Source: {candidate.candidate_data.filename} | Similarity: {candidate.similarity_score ? (candidate.similarity_score * 100).toFixed(2) + '%' : 'N/A'}</div>
               </div>
