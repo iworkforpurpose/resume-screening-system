@@ -1,349 +1,168 @@
-# AI Resume Screener 🤖📄
+# Automated Resume Screening and Candidate Ranking System
 
-An intelligent resume screening platform that uses AI to analyze, parse, and rank candidate resumes against job descriptions. Built with FastAPI, Next.js, and powered by advanced language models.
+## Overview
+This project is an end-to-end solution for automated resume screening and candidate ranking, designed to simulate how modern hiring tools prioritize candidates for recruiters. It leverages state-of-the-art NLP models to parse, embed, and rank resumes based on a given job description, providing explainable match scores and justifications for each candidate.
 
 ## Features
+- **Batch Resume Upload:** Upload multiple resumes (PDF) at once with real-time progress tracking.
+- **Robust Parsing:** Handles noisy/unstructured resume data, extracting name, skills, experience, and education using LLMs.
+- **Semantic Embedding:** Uses Sentence Transformers (MiniLM) to generate embeddings for resumes and job descriptions.
+- **Vector Search:** Stores embeddings in Pinecone for fast similarity search and retrieval.
+- **LLM-Based Ranking:** Uses open-source LLMs (Mistral-7B, Llama 3 via Ollama) to generate match scores (0–100) and detailed justifications (~100 words) for each candidate.
+- **Bias Mitigation:** Avoids over-weighting keywords by using context-aware LLM analysis.
+- **Explainability:** Provides clear, recruiter-friendly explanations for each match score.
+- **Fast Retrieval:** Returns top 10 candidates in under 20 seconds for 22+ resumes.
+- **Modern Web Interface:** Built with Next.js (React), featuring upload, progress, and ranked results with score breakdowns.
+- **Predefined Job Descriptions:** Support for storing and reusing job descriptions to reduce processing time.
+- **Optimized Worker Configuration:** Balanced resource usage with configurable worker count.
 
-- **Batch Resume Upload**: Upload multiple PDF resumes simultaneously
-- **AI-Powered Parsing**: Extract structured data from resumes using LLM
-- **Intelligent Ranking**: Rank candidates against job descriptions with match scores
-- **Vector Search**: Semantic similarity matching using embeddings
-- **Real-time Processing**: Background processing with live progress updates
-- **Duplicate Detection**: Prevents duplicate resumes based on email addresses
-- **Detailed Analytics**: Comprehensive scoring with skill gap analysis
-- **Responsive UI**: Modern, intuitive interface built with React/Next.js
-
-## Architecture
-
-### Backend (FastAPI)
-- **Resume Processing**: PDF text extraction with OCR fallback
-- **AI Analysis**: OpenRouter integration for LLM-powered resume parsing and ranking
-- **Vector Search**: Pinecone for semantic similarity matching
-- **Database**: Supabase for structured data storage
-- **Caching**: In-memory caching for improved performance
-
-### Frontend (Next.js)
-- **React Components**: Modern UI with TypeScript
-- **Real-time Updates**: Progress tracking for batch uploads
-- **Responsive Design**: Mobile-friendly interface
-- **State Management**: React hooks for application state
-
-### External Services
-- **OpenRouter**: LLM API for resume analysis
-- **Pinecone**: Vector database for similarity search
-- **Supabase**: PostgreSQL database and authentication
-- **OCR.space**: Fallback OCR service for poor-quality PDFs
-
-## Prerequisites
-
-- **Python 3.8+**
-- **Node.js 16+**
-- **npm or yarn**
-- **Pinecone account**
-- **Supabase project**
-- **OpenRouter API key**
-- **OCR.space API key** (optional, for OCR fallback)
-
-## Installation
-
-### 1. Clone the Repository
-```bash
-git clone <repository-url>
-cd ai-resume-screener
-```
-
-### 2. Backend Setup
-
-#### Navigate to Backend Directory
-```bash
-cd backend
-```
-
-#### Create Virtual Environment
-```bash
-python -m venv venv
-source venv/bin/activate  # On Windows: venv\Scripts\activate
-```
-
-#### Install Dependencies
-```bash
-pip install -r requirements.txt
-```
-
-#### Environment Variables
-Create a `.env` file in the backend directory:
-
-```env
-# Supabase Configuration
-SUPABASE_URL=your_supabase_project_url
-SUPABASE_KEY=your_supabase_anon_key
-
-# Pinecone Configuration
-PINECONE_API_KEY=your_pinecone_api_key
-
-# OpenRouter Configuration
-OPENROUTER_API_KEY=your_openrouter_api_key
-
-# OCR Service (Optional)
-OCR_API_KEY=your_ocr_space_api_key
-```
-
-#### Database Setup
-1. Create a Supabase project
-2. Create a table named `resumes` with the following schema:
-```sql
-CREATE TABLE resumes (
-    id SERIAL PRIMARY KEY,
-    filename VARCHAR(255) NOT NULL,
-    email VARCHAR(255) UNIQUE NOT NULL,
-    extracted_data JSONB NOT NULL,
-    status VARCHAR(50) DEFAULT 'processed',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-```
-
-#### Pinecone Setup
-1. Create a Pinecone index named `resumes`
-2. Use dimension: `384` (for all-MiniLM-L6-v2 model)
-3. Use cosine similarity metric
-
-### 3. Frontend Setup
-
-#### Navigate to Frontend Directory
-```bash
-cd ../frontend
-```
-
-#### Install Dependencies
-```bash
-npm install
-# or
-yarn install
-```
-
-#### Environment Variables
-Create a `.env.local` file in the frontend directory:
-```env
-NEXT_PUBLIC_API_URL=http://localhost:8000
-```
-
-## Running the Application
-
-### Start Backend Server
-```bash
-cd backend
-python main.py
-```
-The API will be available at `http://localhost:8000`
-
-### Start Frontend Development Server
-```bash
-cd frontend
-npm run dev
-# or
-yarn dev
-```
-The web application will be available at `http://localhost:3000`
-
-## 📖 API Documentation
-
-### Core Endpoints
-
-#### Upload Single Resume
-```http
-POST /upload-and-process-resume/
-Content-Type: multipart/form-data
-
-file: PDF file
-```
-
-#### Batch Upload Resumes
-```http
-POST /batch-upload-and-process-resume/
-Content-Type: multipart/form-data
-
-files: Multiple PDF files
-```
-
-#### Check Upload Status
-```http
-GET /upload-status/{job_id}
-```
-
-#### Rank Candidates
-```http
-POST /rank-candidates/
-Content-Type: application/json
-
-{
-  "job_description": "Job requirements and description..."
-}
-```
-
-### Debug Endpoints
-```http
-GET /debug/database-stats     # Database statistics
-GET /debug/pinecone-stats     # Vector database stats  
-GET /debug/test-query         # Test Pinecone query
-```
-
-## Configuration
-
-### Model Configuration
-- **Embedding Model**: `all-MiniLM-L6-v2` (384 dimensions)
-- **LLM Model**: `mistralai/mistral-7b-instruct` via OpenRouter
-- **Vector Search**: Top-k=10 results
-
-### Performance Settings
-- **Thread Pool**: 4 workers for CPU-intensive tasks
-- **Cache Duration**: 24 hours for LLM results
-- **Retry Logic**: 3 attempts for failed API calls
-- **Timeout**: 300 seconds for keep-alive
+## Tech Stack
+- **Backend:** Python, FastAPI
+- **NLP Models:**
+  - Sentence Transformers (MiniLM, HuggingFace)
+  - LLMs via Ollama (Llama 3, Mistral-7B)
+- **Vector Database:** Pinecone
+- **Database:** Supabase (Postgres)
+- **Frontend:** Next.js (React, TypeScript)
+- **PDF Parsing:** PyPDF2, OCR.space API (fallback)
+- **Deployment:** (To be added: e.g., Vercel for frontend, Render/Heroku for backend)
 
 ## How It Works
+1. **Upload Resumes:**
+   - Upload PDFs in batch. Each file is parsed using an LLM to extract structured data (name, skills, experience, education).
+   - Embeddings are generated for each resume and stored in Pinecone.
+2. **Job Description Input:**
+   - User enters a job description in the web interface.
+   - The description is embedded and used to query Pinecone for the top 10 most similar resumes.
+3. **Candidate Ranking:**
+   - For each retrieved candidate, an LLM generates a match score (0–100) and a ~50-word justification.
+   - Confidence is calculated based on data quality and completeness.
+   - Candidates are ranked: primarily by match score, and by confidence if scores are tied.
+4. **Results Display:**
+   - The frontend displays ranked candidates, their scores, justifications, and a detailed skill/experience breakdown.
 
-### Resume Processing Pipeline
-1. **PDF Upload**: User uploads PDF resume(s)
-2. **Text Extraction**: PyPDF2 extracts text, OCR fallback if needed
-3. **AI Parsing**: LLM extracts structured data (name, skills, experience)
-4. **Validation**: Email extraction and duplicate checking
-5. **Storage**: Save to Supabase database
-6. **Embedding**: Generate vector embedding and store in Pinecone
+## Addressing the Assignment Requirements
+- **Noisy/Unstructured Data:**
+  - LLM-based parsing and preprocessing handle typos, inconsistent formatting, and missing fields.
+- **Bias Mitigation:**
+  - LLMs analyze context, not just keywords, and justifications explain the reasoning.
+- **Fast Retrieval:**
+  - Pinecone vector search and async processing ensure <1 min upload for 22 resumes and <20s ranking for 10+ candidates.
+- **Explainability:**
+  - Each candidate has a human-readable justification and a score breakdown for recruiters.
 
-### Candidate Ranking Pipeline
-1. **Job Description Input**: User provides job requirements
-2. **Vector Search**: Find similar candidates using embeddings
-3. **Data Retrieval**: Fetch candidate details from database
-4. **AI Analysis**: LLM analyzes candidate-job fit
-5. **Scoring**: Generate match scores and skill gap analysis
-6. **Ranking**: Sort by AI match score and similarity
+## New Features in v5.3.0
 
-## Testing
+### 1. Predefined Job Descriptions with Caching
+- Store and reuse job descriptions to reduce processing time
+- Automatically cache JD embeddings for faster retrieval
+- Use JD by ID instead of pasting the full text each time
 
-### Backend Testing
-```bash
-cd backend
-pytest tests/
-```
+### 2. Optimized Worker Configuration
+- Reduced worker count from 4 to 2 for better resource utilization
+- Works well on basic EC2 instances (1 CPU, 2GB RAM)
+- Sequential processing with controlled parallelism
 
-### Frontend Testing
-```bash
-cd frontend
-npm test
-# or
-yarn test
-```
+### 3. Enhanced Analysis Prompts
+- More detailed candidate evaluation with proficiency levels
+- Career trajectory and role alignment assessments
+- Interview recommendations based on candidate background
+- Processing time metrics for performance monitoring
 
-## Data Flow
+### 4. Performance Testing
 
-```
-PDF Upload → Text Extraction → AI Parsing → Database Storage
-                                    ↓
-                            Vector Embedding → Pinecone Storage
-                                    ↓
-Job Description → Vector Search → Candidate Retrieval → AI Ranking
-```
+To test the performance of the new worker configuration:
 
-## Troubleshooting
+1. Start the backend server:
+   ```
+   cd backend
+   uvicorn main:app --reload
+   ```
 
-### Common Issues
+2. Use the test endpoint to check worker configuration:
+   ```
+   curl http://localhost:8000/test-worker-performance
+   ```
 
-#### Backend Issues
-- **Pinecone Connection**: Verify API key and index name
-- **Supabase Connection**: Check URL and API key
-- **OpenRouter Limits**: Monitor API usage and rate limits
-- **OCR Failures**: Ensure OCR.space API key is valid
+3. Upload a batch of resumes and monitor processing times:
+   - The system now reports processing time for each resume
+   - Check the average processing time in the response
 
-#### Frontend Issues
-- **CORS Errors**: Verify backend CORS configuration
-- **API Timeouts**: Increase timeout settings for large uploads
-- **State Issues**: Clear browser cache and localStorage
+4. Compare times with different worker configurations:
+   - Edit `MAX_WORKERS` in `main.py` to test with 1 or 2 workers
+   - Default is now set to 2 workers for optimal balance
 
-#### Performance Issues
-- **Slow Processing**: Reduce batch size or increase worker threads
-- **Memory Usage**: Monitor embedding model memory consumption
-- **Database Queries**: Optimize Supabase queries and indexing
+## API Endpoints
 
-### Debug Mode
-Enable debug logging by setting:
-```python
-import logging
-logging.basicConfig(level=logging.DEBUG)
-```
+### Job Description Management
+- `POST /job-descriptions/` - Create a new job description
+- `GET /job-descriptions/` - List all job descriptions
+- `GET /job-descriptions/{jd_id}` - Get a specific job description
 
-## Security Considerations
+### Resume Processing
+- `POST /upload-and-process-resume/` - Upload and process a single resume
+- `POST /batch-upload-and-process-resume/` - Upload and process multiple resumes
+- `GET /upload-status/{job_id}` - Check the status of an upload job
 
-- **API Keys**: Store in environment variables, never commit to version control
-- **File Validation**: Only accept PDF files, validate file size
-- **Rate Limiting**: Implement API rate limiting for production
-- **Data Privacy**: Ensure compliance with data protection regulations
-- **CORS**: Configure appropriate CORS policies
+### Candidate Ranking
+- `POST /rank-candidates/` - Rank candidates against a job description (with optional JD ID)
+
+### Testing
+- `GET /test-worker-performance` - Check worker configuration and cache statistics
+
+## Setup & Usage
+1. **Clone the Repository:**
+   ```bash
+   git clone <this-repo-url>
+   cd robust_screener
+   ```
+2. **Backend Setup:**
+   - Install Python dependencies:
+     ```bash
+     cd backend
+     pip install -r requirements.txt
+     ```
+   - Set up environment variables (`.env`):
+     - `SUPABASE_URL`, `SUPABASE_KEY`, `PINECONE_API_KEY`, `OCR_API_KEY`
+   - Start Ollama and pull the required models (e.g., `ollama pull llama3.2:3b`)
+   - Run the backend:
+     ```bash
+     python main.py
+     ```
+3. **Frontend Setup:**
+   - Install Node.js dependencies:
+     ```bash
+     cd frontend/robust-frontend
+     npm install
+     ```
+   - Run the frontend:
+     ```bash
+     npm run dev
+     ```
+   - Access the app at [http://localhost:3000](http://localhost:3000)
 
 ## Deployment
+- **Frontend:** Deploy to Vercel or Netlify for instant preview.
+- **Backend:** Deploy to Render, Heroku, or your preferred cloud provider.
+- **Ollama/LLM:** Ensure the backend has access to the Ollama server and required models.
+- **Supabase/Pinecone:** Use managed cloud services for production reliability.
 
-### Backend Deployment (Docker)
-```dockerfile
-FROM python:3.9-slim
-WORKDIR /app
-COPY requirements.txt .
-RUN pip install -r requirements.txt
-COPY . .
-CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
-```
+## Evaluation
+- **Upload Time:** ~1 minute for 22 resumes (batch upload, parallel processing)
+- **Ranking Time:** ~20 seconds for top 10 candidates (LLM + Pinecone)
+- **Scalability:** Designed to handle 100+ resumes with minimal changes.
 
-### Frontend Deployment (Vercel/Netlify)
-```bash
-npm run build
-npm start
-```
+## Example Usage
+1. Upload a batch of resumes (PDFs) via the web interface.
+2. Enter a job description (e.g., "Data Scientist, 3+ years experience, Python, TensorFlow, cloud platforms, strong communication skills").
+3. Click "Rank Candidates" to view the top 10 matches, their scores, justifications, and skill breakdowns.
 
-## Monitoring
+## Screenshots
+![Candidate Ranking Screenshot](frontend/robust-frontend/public/screenshots/candidate-ranking.png)
 
-### Key Metrics
-- **Upload Success Rate**: Monitor failed uploads
-- **Processing Time**: Track resume processing duration
-- **API Response Times**: Monitor endpoint performance
-- **Error Rates**: Track and alert on errors
-- **Database Performance**: Monitor query execution times
-
-### Logging
-- **Structured Logging**: Use JSON format for production
-- **Error Tracking**: Implement error tracking service
-- **Performance Monitoring**: Use APM tools
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit changes (`git commit -m 'Add amazing feature'`)
-4. Push to branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-- Follow PEP 8 for Python code
-- Use TypeScript for frontend development
-- Write tests for new features
-- Update documentation for API changes
-
-## Credits
-
-**Created by**: Vighnesh Nama
-
-### Technologies Used
-- **Backend**: FastAPI, Python, uvicorn
-- **Frontend**: Next.js, React, TypeScript, Tailwind CSS
-- **AI/ML**: OpenRouter, Sentence Transformers, Pinecone
-- **Database**: Supabase (PostgreSQL)
-- **Additional**: PyPDF2, OCR.space, UUID
-
-## Support
-
-For questions or issues:
-1. Check the troubleshooting section
-2. Review API documentation
-3. Create an issue in the repository
-4. Contact the development team
+## License
+MIT
 
 ---
 
-**Happy Screening! **
+**For questions or issues, please open an issue on GitHub.**

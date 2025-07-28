@@ -6,9 +6,18 @@ import { v4 as uuidv4 } from 'uuid';
 // --- TypeScript Interfaces ---
 interface ParsedData {
   name: string;
-  skills: string[];
+  skills?: string[];
+  technical_skills?: string[];
+  soft_skills?: string[];
+  domain_knowledge?: string[];
   experience: string;
   education: string;
+  years_of_experience?: string;
+  phone?: string;
+  location?: string;
+  linkedin_url?: string;
+  certifications?: string[];
+  projects?: string[];
 }
 
 interface CandidateData {
@@ -19,11 +28,22 @@ interface CandidateData {
   created_at: string;
 }
 
+interface SkillMatch {
+  skill: string;
+  level: string;
+}
+
 interface AiAnalysis {
   match_score: number | string;
   justification: string;
-  skill_matches?: string[];
+  skill_matches?: SkillMatch[] | string[];
   skill_gaps?: string[];
+  experience_assessment?: string;
+  education_fit?: string;
+  role_alignment?: string;
+  career_trajectory?: string;
+  interview_recommendations?: string[];
+  processing_time?: number;
   cached?: boolean;
 }
 
@@ -32,6 +52,23 @@ interface RankedCandidate {
   candidate_data: CandidateData;
   ai_analysis: AiAnalysis;
   similarity_score: number;
+}
+
+interface JobDescription {
+  id: string;
+  title: string;
+  description: string;
+}
+
+interface RankingResponse {
+  candidates: RankedCandidate[];
+  performance_metrics: {
+    total_processing_time: number;
+    avg_analysis_time: number;
+    candidates_count: number;
+    cache_hit: boolean;
+    workers_used: number;
+  }
 }
 
 // --- Session ID logic ---
@@ -53,7 +90,7 @@ export default function HomePage() {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadMessage, setUploadMessage] = useState<string | null>(null);
   const [failedUploads, setFailedUploads] = useState<{name: string, reason: string}[]>([]);
-  const [uploadProgress, setUploadProgress] = useState<{jobId: string | null, status: string, processed: number, total: number, successful: number, failed: number}>({
+  const [uploadProgress, setUploadProgress] = useState<{jobId: string | null, status: string, processed: number, total: number, successful: number, failed: number, totalTime?: number}>({
     jobId: null,
     status: '',
     processed: 0,
@@ -63,9 +100,108 @@ export default function HomePage() {
   });
 
   const [jobDescription, setJobDescription] = useState('');
+  const [selectedJobId, setSelectedJobId] = useState<string | null>(null);
+  const [jobDescriptions, setJobDescriptions] = useState<JobDescription[]>([]);
+  const [isLoadingJds, setIsLoadingJds] = useState(false);
+  const [isCreatingJd, setIsCreatingJd] = useState(false);
+  const [newJdTitle, setNewJdTitle] = useState('');
+  const [showCreateJdForm, setShowCreateJdForm] = useState(false);
+  
   const [isRanking, setIsRanking] = useState(false);
   const [rankedCandidates, setRankedCandidates] = useState<RankedCandidate[]>([]);
+  const [performanceMetrics, setPerformanceMetrics] = useState<{
+    total_processing_time: number;
+    avg_analysis_time: number;
+    candidates_count: number;
+    cache_hit: boolean;
+    workers_used: number;
+  } | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Fetch job descriptions on page load
+  useEffect(() => {
+    fetchJobDescriptions();
+  }, []);
+
+  // Fetch job descriptions from the backend
+  const fetchJobDescriptions = async () => {
+    setIsLoadingJds(true);
+    try {
+      const response = await fetch('http://localhost:8000/job-descriptions/');
+      if (!response.ok) {
+        throw new Error('Failed to fetch job descriptions');
+      }
+      const data = await response.json();
+      setJobDescriptions(data);
+    } catch (err) {
+      console.error('Error fetching job descriptions:', err);
+    } finally {
+      setIsLoadingJds(false);
+    }
+  };
+
+  // Create a new job description
+  const handleCreateJobDescription = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!jobDescription.trim() || !newJdTitle.trim()) {
+      setError("Please enter both a title and description for the job.");
+      return;
+    }
+
+    setIsCreatingJd(true);
+    setError(null);
+
+    try {
+      const response = await fetch('http://localhost:8000/job-descriptions/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+          title: newJdTitle,
+          description: jobDescription 
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to create job description');
+      }
+
+      const newJd = await response.json();
+      setJobDescriptions([...jobDescriptions, newJd]);
+      setSelectedJobId(newJd.id);
+      setNewJdTitle('');
+      setShowCreateJdForm(false);
+      setUploadMessage("Job description saved successfully!");
+      
+      // Hide message after 3 seconds
+      setTimeout(() => {
+        setUploadMessage(null);
+      }, 3000);
+      
+    } catch (err: any) {
+      setError(err.message || 'An error occurred while creating the job description');
+    } finally {
+      setIsCreatingJd(false);
+    }
+  };
+
+  // Handle job description selection
+  const handleSelectJobDescription = async (id: string) => {
+    setSelectedJobId(id);
+    setJobDescription('');
+    setError(null);
+    
+    try {
+      const response = await fetch(`http://localhost:8000/job-descriptions/${id}`);
+      if (!response.ok) {
+        throw new Error('Failed to fetch job description');
+      }
+      const data = await response.json();
+      setJobDescription(data.description);
+    } catch (err: any) {
+      setError(err.message || 'An error occurred while fetching the job description');
+      setSelectedJobId(null);
+    }
+  };
 
   // Poll upload status
   useEffect(() => {
@@ -83,12 +219,13 @@ export default function HomePage() {
               processed: status.processed,
               total: status.total_files,
               successful: status.successful,
-              failed: status.failed
+              failed: status.failed,
+              totalTime: status.total_time
             });
             
             if (status.status === 'completed') {
               setIsUploading(false);
-              setUploadMessage(`${status.successful} of ${status.total_files} resumes processed successfully!`);
+              setUploadMessage(`${status.successful} of ${status.total_files} resumes processed successfully${status.total_time ? ` in ${status.total_time} seconds` : ''}!`);
               
               if (status.failed > 0) {
                 const failedDetails = status.results
@@ -132,8 +269,7 @@ export default function HomePage() {
     const sessionId = getSessionId();
 
     try {
-      const apiUrl = process.env.NEXT_PUBLIC_API_URL;
-      const response = await fetch(`${apiUrl}/batch-upload-and-process-resume/`, {
+      const response = await fetch('http://localhost:8000/batch-upload-and-process-resume/', {
         method: 'POST',
         headers: { 'X-Session-Id': sessionId },
         body: formData,
@@ -168,14 +304,15 @@ export default function HomePage() {
 
   const handleRank = async (event: FormEvent) => {
     event.preventDefault();
-    if (!jobDescription.trim()) {
-      setError("Please enter a job description.");
+    if (!jobDescription.trim() && !selectedJobId) {
+      setError("Please enter a job description or select a saved one.");
       return;
     }
 
     setIsRanking(true);
     setError(null);
     setRankedCandidates([]);
+    setPerformanceMetrics(null);
 
     const sessionId = getSessionId();
 
@@ -183,7 +320,10 @@ export default function HomePage() {
       const response = await fetch('http://localhost:8000/rank-candidates/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'X-Session-Id': sessionId },
-        body: JSON.stringify({ job_description: jobDescription }),
+        body: JSON.stringify({ 
+          job_description: jobDescription,
+          jd_id: selectedJobId
+        }),
       });
 
       if (!response.ok) {
@@ -191,8 +331,9 @@ export default function HomePage() {
         throw new Error(errorData.detail || 'An error occurred during ranking.');
       }
 
-      const data: RankedCandidate[] = await response.json();
-      setRankedCandidates(data);
+      const data: RankingResponse = await response.json();
+      setRankedCandidates(data.candidates);
+      setPerformanceMetrics(data.performance_metrics);
 
     } catch (err: any) {
       if (err.name === 'TypeError') {
@@ -291,8 +432,20 @@ export default function HomePage() {
               </div>
             )}
             {uploadProgress.jobId && (
-              <div className="text-xs text-gray-500 mt-1">
-                {uploadProgress.processed} of {uploadProgress.total} files processed
+              <div className="text-xs text-gray-500 mt-1 flex justify-between">
+                <span>{uploadProgress.processed} of {uploadProgress.total} files processed</span>
+                {uploadProgress.totalTime && (
+                  <span>Total time: {uploadProgress.totalTime}s</span>
+                )}
+              </div>
+            )}
+            {uploadProgress.jobId && uploadProgress.status === 'completed' && uploadProgress.successful > 0 && (
+              <div className="bg-green-50 border border-green-100 rounded p-2 text-xs mt-2">
+                <div className="font-medium text-green-700">Processing complete!</div>
+                <div className="text-green-600">
+                  Successfully processed {uploadProgress.successful} of {uploadProgress.total} files
+                  {uploadProgress.totalTime && ` in ${uploadProgress.totalTime} seconds`}.
+                </div>
               </div>
             )}
           </form>
@@ -302,19 +455,81 @@ export default function HomePage() {
         <div className="bg-white rounded-2xl shadow-lg p-8 flex flex-col gap-6">
           <h2 className="text-xl font-bold mb-2">Rank Candidates</h2>
           <p className="text-gray-500 text-sm mb-4">AI-powered candidate analysis and ranking</p>
+          
+          {/* Job Description Selection */}
+          <div className="mb-4">
+            <label className="font-medium">Saved Job Descriptions</label>
+            <div className="flex flex-wrap gap-2 mt-2">
+              {isLoadingJds ? (
+                <div className="text-sm text-gray-500">Loading job descriptions...</div>
+              ) : jobDescriptions.length > 0 ? (
+                jobDescriptions.map(jd => (
+                  <button
+                    key={jd.id}
+                    onClick={() => handleSelectJobDescription(jd.id)}
+                    className={`px-3 py-1 text-sm rounded-full transition ${
+                      selectedJobId === jd.id 
+                        ? 'bg-blue-600 text-white' 
+                        : 'bg-blue-100 text-blue-800 hover:bg-blue-200'
+                    }`}
+                  >
+                    {jd.title}
+                  </button>
+                ))
+              ) : (
+                <div className="text-sm text-gray-500">No saved job descriptions</div>
+              )}
+              <button 
+                onClick={() => {
+                  setShowCreateJdForm(!showCreateJdForm);
+                  setSelectedJobId(null);
+                }}
+                className="px-3 py-1 text-sm rounded-full bg-gray-100 text-gray-800 hover:bg-gray-200 transition"
+              >
+                {showCreateJdForm ? 'Cancel' : '+ New Job'}
+              </button>
+            </div>
+          </div>
+          
+          {showCreateJdForm && (
+            <div className="bg-blue-50 p-4 rounded-lg mb-4">
+              <h3 className="font-medium mb-2">Save New Job Description</h3>
+              <form onSubmit={handleCreateJobDescription} className="flex flex-col gap-3">
+                <input
+                  type="text"
+                  placeholder="Job Title (e.g. Senior Software Engineer)"
+                  className="border border-gray-300 rounded-lg p-2 focus:outline-none focus:ring-2 focus:ring-blue-200"
+                  value={newJdTitle}
+                  onChange={e => setNewJdTitle(e.target.value)}
+                  disabled={isCreatingJd}
+                />
+                <button
+                  type="submit"
+                  className="bg-blue-600 hover:bg-blue-700 text-white font-medium py-1 rounded-lg transition disabled:opacity-50"
+                  disabled={isCreatingJd || !jobDescription.trim() || !newJdTitle.trim()}
+                >
+                  {isCreatingJd ? 'Saving...' : 'Save Job Description'}
+                </button>
+              </form>
+            </div>
+          )}
+          
           <form onSubmit={handleRank} className="flex flex-col gap-4">
             <label className="font-medium">Job Description & Requirements</label>
             <textarea
               className="border border-gray-300 rounded-lg p-3 min-h-[100px] focus:outline-none focus:ring-2 focus:ring-blue-200"
               placeholder="Enter the job description, required skills, qualifications, and any specific requirements for this position..."
               value={jobDescription}
-              onChange={e => setJobDescription(e.target.value)}
+              onChange={e => {
+                setJobDescription(e.target.value);
+                setSelectedJobId(null);
+              }}
               disabled={isRanking}
             />
             <button
               type="submit"
               className="bg-green-600 hover:bg-green-700 text-white font-semibold py-2 rounded-lg transition disabled:opacity-50"
-              disabled={isRanking || !jobDescription.trim()}
+              disabled={isRanking || (!jobDescription.trim() && !selectedJobId)}
             >
               {isRanking ? 'Ranking...' : 'Rank Candidates'}
             </button>
@@ -324,31 +539,163 @@ export default function HomePage() {
       </section>
 
       {/* Ranked Candidates Section */}
-      {rankedCandidates.length > 0 && (
+      {rankedCandidates && rankedCandidates.length > 0 && (
         <section className="max-w-6xl mx-auto pb-16">
           <h2 className="text-2xl font-bold mb-6 text-center">Top Candidate Matches</h2>
+          
+          {/* Performance Metrics */}
+          {performanceMetrics && (
+            <div className="bg-gray-50 p-4 rounded-lg mb-6">
+              <h3 className="font-semibold mb-2">Processing Metrics</h3>
+              <div className="grid grid-cols-2 md:grid-cols-5 gap-4 text-sm">
+                <div className="bg-white p-2 rounded shadow">
+                  <div className="text-gray-500">Total Time</div>
+                  <div className="font-medium">{performanceMetrics.total_processing_time}s</div>
+                </div>
+                <div className="bg-white p-2 rounded shadow">
+                  <div className="text-gray-500">Avg Analysis</div>
+                  <div className="font-medium">{performanceMetrics.avg_analysis_time}s</div>
+                </div>
+                <div className="bg-white p-2 rounded shadow">
+                  <div className="text-gray-500">Candidates</div>
+                  <div className="font-medium">{performanceMetrics.candidates_count}</div>
+                </div>
+                <div className="bg-white p-2 rounded shadow">
+                  <div className="text-gray-500">Workers</div>
+                  <div className="font-medium">{performanceMetrics.workers_used}</div>
+                </div>
+                <div className="bg-white p-2 rounded shadow">
+                  <div className="text-gray-500">Cache Hit</div>
+                  <div className="font-medium">{performanceMetrics.cache_hit ? 'Yes' : 'No'}</div>
+                </div>
+              </div>
+            </div>
+          )}
+          
           <div className="flex flex-col gap-8">
             {rankedCandidates.map((candidate, idx) => (
               <div key={idx} className="bg-white rounded-2xl shadow-lg p-8 flex flex-col gap-4">
                 <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-2">
                   <div className="text-xl font-bold text-blue-700">{candidate.candidate_data.extracted_data.name || 'Unknown'}</div>
                   <div className="flex items-center gap-4">
-                    <div className="text-lg font-semibold text-gray-700">{candidate.ai_analysis.match_score}/100</div>
+                    <div className="px-3 py-1 rounded-full bg-blue-100 text-blue-800 text-sm font-medium">
+                      Rank #{candidate.rank}
+                    </div>
+                    <div className="text-lg font-semibold text-gray-700">Match Score: {candidate.ai_analysis.match_score}/100</div>
                   </div>
                 </div>
-                <div className="text-gray-700 mb-2">{candidate.ai_analysis.justification}</div>
-                <div className="bg-gray-50 rounded-lg p-4">
-                  <div className="font-semibold mb-1">Skill Breakdown:</div>
-                  <div className="flex flex-wrap gap-2 mb-1">
-                    {candidate.ai_analysis.skill_matches && candidate.ai_analysis.skill_matches.length > 0 && (
-                      <span className="text-green-700 bg-green-100 rounded px-2 py-0.5 text-xs">✓ Matching Skills: {candidate.ai_analysis.skill_matches.join(', ')}</span>
-                    )}
-                    {candidate.ai_analysis.skill_gaps && candidate.ai_analysis.skill_gaps.length > 0 && (
-                      <span className="text-red-700 bg-red-100 rounded px-2 py-0.5 text-xs">✗ Missing Skills: {candidate.ai_analysis.skill_gaps.join(', ')}</span>
-                    )}
+                
+                {/* Main content */}
+                <div className="text-gray-700 mb-2 bg-blue-50 p-4 rounded-lg">{candidate.ai_analysis.justification}</div>
+                
+                {/* Analysis Details */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-2">
+                  {/* Skill matches with levels */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="font-semibold mb-1">Skill Matches:</div>
+                    <div className="flex flex-wrap gap-2 mb-1">
+                      {Array.isArray(candidate.ai_analysis.skill_matches) && candidate.ai_analysis.skill_matches.length > 0 && (
+                        <div className="grid grid-cols-1 gap-1 w-full">
+                          {candidate.ai_analysis.skill_matches.map((skill, i) => {
+                            if (typeof skill === 'string') {
+                              return (
+                                <span key={i} className="text-green-700 bg-green-50 rounded px-2 py-1 text-xs">
+                                  ✓ {skill}
+                                </span>
+                              );
+                            } else {
+                              return (
+                                <span key={i} className="text-green-700 bg-green-50 rounded px-2 py-1 text-xs flex justify-between">
+                                  <span>✓ {skill.skill}</span>
+                                  <span className={
+                                    skill.level === 'Expert' ? 'text-green-700' : 
+                                    skill.level === 'Intermediate' ? 'text-blue-700' : 
+                                    'text-gray-700'
+                                  }>
+                                    {skill.level}
+                                  </span>
+                                </span>
+                              );
+                            }
+                          })}
+                        </div>
+                      )}
+                      {(!candidate.ai_analysis.skill_matches || candidate.ai_analysis.skill_matches.length === 0) && 
+                        <span className="text-gray-500 text-xs">No matching skills found</span>
+                      }
+                    </div>
                   </div>
+                  
+                  {/* Skill gaps */}
+                  <div className="bg-gray-50 rounded-lg p-4">
+                    <div className="font-semibold mb-1">Skill Gaps:</div>
+                    <div className="flex flex-wrap gap-2 mb-1">
+                      {candidate.ai_analysis.skill_gaps && candidate.ai_analysis.skill_gaps.length > 0 && (
+                        <div className="grid grid-cols-1 gap-1 w-full">
+                          {candidate.ai_analysis.skill_gaps.map((skill, i) => (
+                            <span key={i} className="text-red-700 bg-red-50 rounded px-2 py-1 text-xs">
+                              ✗ {skill}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {(!candidate.ai_analysis.skill_gaps || candidate.ai_analysis.skill_gaps.length === 0) && 
+                        <span className="text-gray-500 text-xs">No skill gaps identified</span>
+                      }
+                    </div>
+                  </div>
+                  
+                  {/* Experience assessment */}
+                  {candidate.ai_analysis.experience_assessment && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="font-semibold mb-1">Experience Assessment:</div>
+                      <div className="text-sm text-gray-700">{candidate.ai_analysis.experience_assessment}</div>
+                    </div>
+                  )}
+                  
+                  {/* Education fit */}
+                  {candidate.ai_analysis.education_fit && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="font-semibold mb-1">Education Fit:</div>
+                      <div className="text-sm text-gray-700">{candidate.ai_analysis.education_fit}</div>
+                    </div>
+                  )}
+                  
+                  {/* Role alignment */}
+                  {candidate.ai_analysis.role_alignment && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="font-semibold mb-1">Role Alignment:</div>
+                      <div className="text-sm text-gray-700">{candidate.ai_analysis.role_alignment}</div>
+                    </div>
+                  )}
+                  
+                  {/* Career trajectory */}
+                  {candidate.ai_analysis.career_trajectory && (
+                    <div className="bg-gray-50 rounded-lg p-4">
+                      <div className="font-semibold mb-1">Career Trajectory:</div>
+                      <div className="text-sm text-gray-700">{candidate.ai_analysis.career_trajectory}</div>
+                    </div>
+                  )}
                 </div>
-                <div className="text-xs text-gray-400 mt-2">Source: {candidate.candidate_data.filename} | Similarity: {candidate.similarity_score ? (candidate.similarity_score * 100).toFixed(2) + '%' : 'N/A'}</div>
+                
+                {/* Interview recommendations */}
+                {candidate.ai_analysis.interview_recommendations && candidate.ai_analysis.interview_recommendations.length > 0 && (
+                  <div className="bg-amber-50 rounded-lg p-4 mt-2">
+                    <div className="font-semibold mb-1">Suggested Interview Questions:</div>
+                    <ul className="list-disc pl-5 text-sm">
+                      {candidate.ai_analysis.interview_recommendations.map((question, i) => (
+                        <li key={i} className="text-gray-700">{question}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+                
+                {/* Metadata */}
+                <div className="flex flex-wrap justify-between text-xs text-gray-400 mt-4">
+                  <div>Source: {candidate.candidate_data.filename}</div>
+                  <div>Similarity: {candidate.similarity_score ? (candidate.similarity_score * 100).toFixed(2) + '%' : 'N/A'}</div>
+                  {candidate.ai_analysis.processing_time && <div>Processing time: {candidate.ai_analysis.processing_time}s</div>}
+                </div>
               </div>
             ))}
           </div>

@@ -1,20 +1,46 @@
-# Environment variables
-.env
-.env*.local
-
 # Python
-/backend/venv/
-/backend/__pycache__/
-venv/
+*.pyc
 __pycache__/
+*.pyo
+*.pyd
+*.pdb
+*.egg-info/
+*.egg
+*.env
+.env
+backend/venv/
+venv/
+ENV/
+env/
+.Python
 
-# Node.js
-/frontend/robust-frontend/node_modules/
-/frontend/robust-frontend/.next/
+# Node
 node_modules/
 .next/
-package-lock.json
+frontend/robust-frontend/.env
+.env.local
 
-# IDE and OS files
+# OS-specific
 .DS_Store
+
+# Logs and system
+*.log
+
+# IDEs/editors
 .vscode/
+.idea/
+
+# Build outputs
+dist/
+build/
+out/
+coverage/
+*.sqlite3
+
+# Jupyter
+.ipynb_checkpoints/
+
+# Others
+*.bak
+*.swp
+*.tmp
