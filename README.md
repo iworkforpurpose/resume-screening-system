@@ -104,7 +104,7 @@ This project is an end-to-end solution for automated resume screening and candid
 ## Performance
 
 - **Batch Upload:** ~1 minute for 20+ resumes (on low-resource servers)
-- **Ranking:** ~20 seconds for top 10 candidates (LLM + Pinecone)
+- **Ranking:** ~10 seconds for top 10 candidates (LLM + Pinecone)
 - **Scalability:** Designed for 100+ resumes with minimal changes.
 
 ---
