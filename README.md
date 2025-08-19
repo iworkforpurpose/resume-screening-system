@@ -41,14 +41,76 @@ This project is an end-to-end solution for automated resume screening and candid
 
 ---
 
-## Technology Stack
+## ⚙️ Tech Stack & Architecture  
 
-- **Backend:** Python, FastAPI
-- **Frontend:** Next.js (React, TypeScript)
-- **NLP/LLM:** Sentence Transformers (MiniLM), OpenRouter (Mistral-7B, etc.)
-- **Vector DB:** Pinecone
-- **Database:** Supabase (Postgres)
-- **PDF Parsing:** PyPDF2, OCR.space (fallback)
+This project implements a **custom Retrieval-Augmented Generation (RAG) pipeline** for resume screening and candidate scoring.  
+Unlike LangChain or LlamaIndex, the system uses lightweight, transparent glue code to integrate tools directly — keeping it simple, cost-efficient, and highly customizable.  
+
+---
+
+### 🔑 Core Components  
+
+1. **Frontend (Next.js + TypeScript)**  
+   - Handles resume upload and JD submission.  
+   - Displays ranked candidates, analysis justifications, and performance metrics.  
+
+2. **Backend (FastAPI + Uvicorn)**  
+   - Provides REST APIs for uploading, processing, ranking, and polling job status.  
+   - Orchestrates the resume parsing, embedding, and scoring pipeline.  
+
+3. **Resume Parsing**  
+   - **PyPDF2** → Extracts text from digital PDFs.  
+   - **OCR.space API** → Fallback for scanned/image resumes.  
+   - Ensures robust text extraction for all resume formats.  
+
+4. **LLM Processing (OpenRouter + Mistral-7B)**  
+   - Converts raw resume text into structured JSON fields (skills, experience, education, etc.).  
+   - Repairs malformed JSON and falls back to regex extraction if needed.  
+   - Performs candidate scoring: outputs  
+     - `match_score` (0–100)  
+     - skills fit/gap  
+     - education fit  
+     - career trajectory  
+     - justification  
+     - interview recommendation  
+
+5. **Embeddings & Retrieval (RAG)**  
+   - **SentenceTransformers (MiniLM)** → Generates vector embeddings for resumes and job descriptions.  
+   - **Pinecone** → Vector database for semantic search. Retrieves top-K candidate resumes relevant to a JD.  
+   - This is the **retrieval step** of the RAG pipeline.  
+
+6. **Metadata & Persistence**  
+   - **Supabase (Postgres)** → Stores structured candidate metadata, job descriptions, and processing states.  
+
+7. **Ranking & Caching**  
+   - After retrieval, each candidate is passed to the LLM for scoring + explanation.  
+   - Results are cached for `(JD, candidate)` pairs to reduce latency and API costs.  
+   - Parallel processing via **ThreadPoolExecutor** allows multiple resumes to be processed concurrently.  
+
+---
+
+### 🔄 Custom RAG Workflow  
+
+1. **Retrieve**  
+   - Embed the job description.  
+   - Query Pinecone to retrieve semantically similar resumes.  
+
+2. **Augment**  
+   - Combine JD + candidate’s structured resume into an LLM prompt.  
+
+3. **Generate**  
+   - LLM outputs a structured analysis with a numeric match score and justification.  
+
+This lightweight RAG implementation avoids heavy abstractions (e.g., LangChain), while retaining full control over prompts, embeddings, and caching.  
+
+---
+
+### ❓ Why not LangChain or LlamaIndex?  
+
+- **Transparency** → Direct control over parsing, embedding, retrieval, and scoring.  
+- **Performance** → Avoid overhead from generic chains and unused features.  
+- **Cost-efficiency** → Custom caching prevents duplicate LLM calls.  
+- **Flexibility** → Easy to swap models (change embedding models or LLM providers).  
 
 ---
 
